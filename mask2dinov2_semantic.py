@@ -14,7 +14,17 @@ import os
 import evaluate
 import torch
 from tqdm.auto import tqdm
+import argparse
+from datetime import datetime
+current_date = datetime.now().strftime("%Y%m%d")
+print("current date: ",current_date )
+parser = argparse.ArgumentParser(description='Mask2DinoV2 Semantic Segmentation')
+parser.add_argument('--checkpoint_path', type=str, default="Mask2DinoV2_results_20240315/46.pth", help='Checkpoint path')
+parser.add_argument('--save_folder', type=str, default="mask2dino", help="mask2dino/mask2former")
+parser.add_argument('--mode', type=str, default="mask2dino", help="mask2dino/mask2former")
+parser.add_argument('--folder_name', type=str, default=current_date)
 
+args = parser.parse_args()
 
 dataset = load_dataset("segments/sidewalk-semantic")
 
@@ -133,25 +143,23 @@ visualize_mask(labels, "flat-road")
 """
 Define model
 """
-
-
+if args.mode != "mask2former":
 # Store Dinov2 weights locally
-dinov2_backbone_model = Dinov2Model.from_pretrained("facebook/dinov2-small", out_indices=[6, 8, 10, 12])
-if not os.path.exists("dinov2-small.pth"):
-    torch.save(dinov2_backbone_model.state_dict(), "dinov2-small.pth")
+  dinov2_backbone_model = Dinov2Model.from_pretrained("facebook/dinov2-small", out_indices=[6, 8, 10, 12])
+  if not os.path.exists("dinov2-small.pth"):
+      torch.save(dinov2_backbone_model.state_dict(), "dinov2-small.pth")
+  else:
+      print("DinoV2 weights already exist")
+
+  model_config = Mask2FormerConfig.from_pretrained("facebook/mask2former-swin-tiny-ade-semantic", id2label=id2label, ignore_mismatched_sizes=True)
+  model_config.backbone_config = Dinov2Config.from_pretrained("facebook/dinov2-small", out_indices = (6, 8, 10 ,12))
+  # Instantiate Mask2Former model with Dinov2 backbone (random weights)
+  model = Mask2FormerForUniversalSegmentation(model_config)
+  # # Load Dinov2 weights into Mask2Former backbone
+  dinov2_backbone = model.model.pixel_level_module.encoder
+  dinov2_backbone.load_state_dict(torch.load("dinov2-small.pth"))
 else:
-    print("DinoV2 weights already exist")
-
-model_config = Mask2FormerConfig.from_pretrained("facebook/mask2former-swin-tiny-ade-semantic", id2label=id2label, ignore_mismatched_sizes=True)
-model_config.backbone_config = Dinov2Config.from_pretrained("facebook/dinov2-small", out_indices = (6, 8, 10 ,12))
-# model_config.backbone_config = Dinov2Config(out_indices = ( 6, 8, 10 ,12))
-
-# Instantiate Mask2Former model with Dinov2 backbone (random weights)
-model = Mask2FormerForUniversalSegmentation(model_config)
-
-# # Load Dinov2 weights into Mask2Former backbone
-dinov2_backbone = model.model.pixel_level_module.encoder
-dinov2_backbone.load_state_dict(torch.load("dinov2-small.pth"))
+  model_config = Mask2FormerConfig.from_pretrained("facebook/mask2former-swin-tiny-ade-semantic", id2label=id2label, ignore_mismatched_sizes=True)
 
 """Train the model"""
 metric = evaluate.load("mean_iou")
@@ -165,18 +173,14 @@ running_loss = 0.0
 num_samples = 0
 
 #check if checkpoint exists
-checkpoint_prefix = 'model_checkpoint_epoch_'
-checkpoint_files = [f for f in os.listdir('.') if os.path.isfile(f) and f.startswith(checkpoint_prefix)]
-if checkpoint_files:
-    latest_checkpoint = max(checkpoint_files, key=lambda x: int(x.split('_')[-1].split('.')[0]))
-    print(latest_checkpoint)
-    checkpoint = torch.load(latest_checkpoint, map_location=device)
+if args.checkpoint_path:
+    checkpoint = torch.load(args.checkpoint_path , map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     start_epoch = checkpoint['epoch'] + 1
     running_loss = checkpoint['running_loss']
     num_samples = checkpoint['num_samples']
-    print(f"Loaded checkpoint from epoch {start_epoch - 1}, file: {latest_checkpoint}")
+    print(f"Loaded checkpoint from epoch {start_epoch}")
 else:
     print("No checkpoint found. Starting training from scratch.")
 
@@ -209,7 +213,7 @@ for epoch in range(start_epoch, epoch):
       # Optimization
       optimizer.step()
     # After each epoch, save the model
-  checkpoint_path = f'{checkpoint_prefix}{epoch}.pth'
+  checkpoint_path = f'results/{args.saved_folder}/{args.folder_name}/{epoch}.pth'
   checkpoint = {
       'epoch': epoch,
       'model_state_dict': model.state_dict(),
