@@ -1,0 +1,5 @@
+/transformers
+/results
+dinov2-base.pth
+dinov2-small.pth
+/dataset
