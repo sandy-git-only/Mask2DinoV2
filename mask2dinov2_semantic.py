@@ -19,14 +19,31 @@ from datetime import datetime
 current_date = datetime.now().strftime("%Y%m%d")
 print("current date: ",current_date )
 parser = argparse.ArgumentParser(description='Mask2DinoV2 Semantic Segmentation')
-parser.add_argument('--checkpoint_path', type=str, default="Mask2DinoV2_results_20240315/46.pth", help='Checkpoint path')
-parser.add_argument('--save_folder', type=str, default="mask2dino", help="mask2dino/mask2former")
-parser.add_argument('--mode', type=str, default="mask2dino", help="mask2dino/mask2former")
+parser.add_argument('--mode', type=str, default="mask2dinov2", help="mask2dino/mask2former")
+parser.add_argument('--checkpoint_path', type=str,  help='Checkpoint path')
 parser.add_argument('--folder_name', type=str, default=current_date)
+parser.add_argument('--lr', type=float, default='1.5e-6')
+parser.add_argument('--epoch', type=int, default='150')
 
 args = parser.parse_args()
 
+saved_folder = f'results/{args.mode}/{args.folder_name}'
+
 dataset = load_dataset("segments/sidewalk-semantic")
+
+print("checkpoint_path: ",args.checkpoint_path)
+
+def save_loss_plot(losses, save_path=f'{args.checkpoint_path}/loss.png'):
+    plt.figure(figsize=(10, 5))
+    plt.plot( losses, label='Training Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Training Loss Over Time')
+    plt.xticks( rotation='vertical')
+    plt.legend()
+    plt.savefig(save_path)
+    plt.close()
+
 
 # shuffle + split dataset
 dataset = dataset.shuffle(seed=1)
@@ -166,7 +183,7 @@ metric = evaluate.load("mean_iou")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
-optimizer = torch.optim.Adam(model.parameters(), lr=5e-5)
+optimizer = torch.optim.Adam(model.parameters(), lr=args.lr) #5e-5
 # initialize training
 start_epoch = 0
 running_loss = 0.0
@@ -177,17 +194,19 @@ if args.checkpoint_path:
     checkpoint = torch.load(args.checkpoint_path , map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    start_epoch = checkpoint['epoch'] + 1
+    start_epoch = checkpoint['epoch']+1
     running_loss = checkpoint['running_loss']
     num_samples = checkpoint['num_samples']
-    print(f"Loaded checkpoint from epoch {start_epoch}")
+    print(f"Start training from epoch {start_epoch}")
 else:
     print("No checkpoint found. Starting training from scratch.")
 
-epoch = 100
+epoch = args.epoch
+losses = [] 
+miou_values = []
 for epoch in range(start_epoch, epoch):
   print("Epoch:", epoch)
-  model.train()
+  model.train() 
   for idx, batch in enumerate(tqdm(train_dataloader)):
       # Reset the parameter gradients
       optimizer.zero_grad()
@@ -212,8 +231,10 @@ for epoch in range(start_epoch, epoch):
 
       # Optimization
       optimizer.step()
+  loss = running_loss / num_samples
+  losses.append(loss)
     # After each epoch, save the model
-  checkpoint_path = f'results/{args.saved_folder}/{args.folder_name}/{epoch}.pth'
+  checkpoint_path = f'{saved_folder}/{epoch}.pth'
   checkpoint = {
       'epoch': epoch,
       'model_state_dict': model.state_dict(),
@@ -221,6 +242,10 @@ for epoch in range(start_epoch, epoch):
       'running_loss': running_loss,
       'num_samples': num_samples,
   }
+
+  result_path = f'{saved_folder}/loss_epoch.png'
+  save_loss_plot(losses, save_path=result_path)
+  
   torch.save(checkpoint, checkpoint_path)
   print(f"Checkpoint saved at {checkpoint_path}")
 
@@ -246,7 +271,9 @@ for epoch in range(start_epoch, epoch):
     ground_truth_segmentation_maps = batch["original_segmentation_maps"]
 
     metric.add_batch(references=ground_truth_segmentation_maps, predictions=predicted_segmentation_maps)
-
-  # NOTE this metric outputs a dict that also includes the mIoU per category as keys
-  # so if you're interested, feel free to print them as well
-  print("Mean IoU:", metric.compute(num_labels = len(id2label), ignore_index = 0)['mean_iou'])
+    miou = metric.compute(num_labels = len(id2label), ignore_index = 0)['mean_iou']
+    miou_values.append(miou)
+  with open(f'{saved_folder}/result.txt', 'a') as f:
+    f.write(f'Epoch {epoch}: Loss={loss}, mIoU={miou}\n')
+    
+  print("Mean IoU:", miou)
