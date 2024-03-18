@@ -161,23 +161,25 @@ visualize_mask(labels, "flat-road")
 """
 Define model
 """
-if args.mode != "mask2former":
-# Store Dinov2 weights locally
-  dinov2_backbone_model = Dinov2Model.from_pretrained("facebook/dinov2-small", out_indices=[6, 8, 10, 12])
-  if not os.path.exists("dinov2-small.pth"):
-      torch.save(dinov2_backbone_model.state_dict(), "dinov2-small.pth")
-  else:
-      print("DinoV2 weights already exist")
 
-  model_config = Mask2FormerConfig.from_pretrained("facebook/mask2former-swin-tiny-ade-semantic", id2label=id2label, ignore_mismatched_sizes=True)
-  model_config.backbone_config = Dinov2Config.from_pretrained("facebook/dinov2-small", out_indices = (6, 8, 10 ,12))
-  # Instantiate Mask2Former model with Dinov2 backbone (random weights)
-  model = Mask2FormerForUniversalSegmentation(model_config)
-  # # Load Dinov2 weights into Mask2Former backbone
-  dinov2_backbone = model.model.pixel_level_module.encoder
-  dinov2_backbone.load_state_dict(torch.load("dinov2-small.pth"))
+
+# Store Dinov2 weights locally
+dinov2_backbone_model = Dinov2Model.from_pretrained("facebook/dinov2-small", out_indices=[6, 8, 10, 12])
+if not os.path.exists("dinov2-small.pth"):
+    torch.save(dinov2_backbone_model.state_dict(), "dinov2-small.pth")
 else:
-  model_config = Mask2FormerConfig.from_pretrained("facebook/mask2former-swin-tiny-ade-semantic", id2label=id2label, ignore_mismatched_sizes=True)
+    print("DinoV2 weights already exist")
+
+model_config = Mask2FormerConfig.from_pretrained("facebook/mask2former-swin-tiny-ade-semantic", id2label=id2label, ignore_mismatched_sizes=True)
+model_config.backbone_config = Dinov2Config.from_pretrained("facebook/dinov2-small", out_indices = (6, 8, 10 ,12))
+# model_config.backbone_config = Dinov2Config(out_indices = ( 6, 8, 10 ,12))
+
+# Instantiate Mask2Former model with Dinov2 backbone (random weights)
+model = Mask2FormerForUniversalSegmentation(model_config)
+
+# # Load Dinov2 weights into Mask2Former backbone
+dinov2_backbone = model.model.pixel_level_module.encoder
+dinov2_backbone.load_state_dict(torch.load("dinov2-small.pth"))
 
 """Train the model"""
 metric = evaluate.load("mean_iou")
@@ -198,7 +200,7 @@ if args.model:
     start_epoch = checkpoint['epoch']+1
     running_loss = checkpoint['running_loss']
     num_samples = checkpoint['num_samples']
-    print(f"Start training from epoch {start_epoch}")
+    print(f"Loaded checkpoint from epoch {start_epoch}")
 else:
     print("No checkpoint found. Starting training from scratch.")
 
@@ -235,7 +237,7 @@ for epoch in range(start_epoch, epoch):
   loss = running_loss / num_samples
   losses.append(loss)
     # After each epoch, save the model
-  checkpoint_path = f'{saved_folder}/{epoch}.pth'
+  checkpoint_path = f'results/{args.saved_folder}/{args.folder_name}/{epoch}.pth'
   checkpoint = {
       'epoch': epoch,
       'model_state_dict': model.state_dict(),
