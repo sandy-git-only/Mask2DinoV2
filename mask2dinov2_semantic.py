@@ -18,9 +18,10 @@ import argparse
 from datetime import datetime
 current_date = datetime.now().strftime("%Y%m%d")
 print("current date: ",current_date )
+
 parser = argparse.ArgumentParser(description='Mask2DinoV2 Semantic Segmentation')
 parser.add_argument('--mode', type=str, default="mask2dinov2", help="mask2dino/mask2former")
-parser.add_argument('--checkpoint_path', type=str,  help='Checkpoint path')
+parser.add_argument('--model', type=str,  help='Checkpoint path')
 parser.add_argument('--folder_name', type=str, default=current_date)
 parser.add_argument('--lr', type=float, default='1.5e-6')
 parser.add_argument('--epoch', type=int, default='150')
@@ -31,9 +32,9 @@ saved_folder = f'results/{args.mode}/{args.folder_name}'
 
 dataset = load_dataset("segments/sidewalk-semantic")
 
-print("checkpoint_path: ",args.checkpoint_path)
+print("resume from: ",args.model)
 
-def save_loss_plot(losses, save_path=f'{args.checkpoint_path}/loss.png'):
+def save_loss_plot(losses, save_path):
     plt.figure(figsize=(10, 5))
     plt.plot( losses, label='Training Loss')
     plt.xlabel('Epoch')
@@ -190,8 +191,8 @@ running_loss = 0.0
 num_samples = 0
 
 #check if checkpoint exists
-if args.checkpoint_path:
-    checkpoint = torch.load(args.checkpoint_path , map_location=device)
+if args.model:
+    checkpoint = torch.load(args.model , map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     start_epoch = checkpoint['epoch']+1
