@@ -237,7 +237,7 @@ for epoch in range(start_epoch, epoch):
   loss = running_loss / num_samples
   losses.append(loss)
     # After each epoch, save the model
-  checkpoint_path = f'results/{args.saved_folder}/{args.folder_name}/{epoch}.pth'
+  checkpoint_path = f'results/{args.mode}/{args.folder_name}/{epoch}.pth'
   checkpoint = {
       'epoch': epoch,
       'model_state_dict': model.state_dict(),
