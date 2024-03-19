@@ -23,8 +23,9 @@ parser = argparse.ArgumentParser(description='Mask2DinoV2 Semantic Segmentation'
 parser.add_argument('--mode', type=str, default="mask2dinov2", help="mask2dino/mask2former")
 parser.add_argument('--model', type=str,  help='Checkpoint path')
 parser.add_argument('--folder_name', type=str, default=current_date)
-parser.add_argument('--lr', type=float, default='1.5e-6')
-parser.add_argument('--epoch', type=int, default='150')
+parser.add_argument('--lr', type=float, default='5.0e-6')
+parser.add_argument('--epoch', type=int, default='300')
+parser.add_argument('--batch_size', type=int, default='4')
 
 args = parser.parse_args()
 
@@ -122,8 +123,8 @@ img = img.astype(np.uint8)
 
 # Create a preprocessor
 preprocessor = Mask2FormerImageProcessor(ignore_index=0, reduce_labels=False, do_resize=False, do_rescale=False, do_normalize=False)
-train_dataloader = DataLoader(train_dataset, batch_size=2, shuffle=True, collate_fn=collate_fn)
-test_dataloader = DataLoader(test_dataset, batch_size=2, shuffle=False, collate_fn=collate_fn)
+train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
+test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn)
 
 
 batch = next(iter(train_dataloader))
@@ -183,7 +184,14 @@ dinov2_backbone.load_state_dict(torch.load("dinov2-small.pth"))
 
 """Train the model"""
 metric = evaluate.load("mean_iou")
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch.cuda.is_available():
+  device = "cuda"
+else:
+  device = "cpu"
+print("Device: ", device)
+
+device = torch.device(device)
+
 model.to(device)
 
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr) #5e-5
@@ -200,7 +208,7 @@ if args.model:
     start_epoch = checkpoint['epoch']+1
     running_loss = checkpoint['running_loss']
     num_samples = checkpoint['num_samples']
-    print(f"Loaded checkpoint from epoch {start_epoch}")
+    print(f"Start training from epoch {start_epoch}")
 else:
     print("No checkpoint found. Starting training from scratch.")
 
